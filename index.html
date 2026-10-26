@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>写真書き出し</title>
+<style>
+:root{
+  --bg:#f6f6f4;--panel:#fff;--ink:#18181b;--sub:#71717a;--faint:#a1a1aa;--line:#e7e5e4;--hover:#f4f4f5;
+  --acc:#18181b;--sel:#2563eb;--selbg:#eff6ff;--guide:#ef4444;--vguide:#2563eb;
+  --ok:#16a34a;--okbg:#f0fdf4;--warn:#b45309;--warnbg:#fffbeb;--bad:#dc2626;--badbg:#fef2f2;
+  --r:10px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 12px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+.btn.primary:hover{opacity:.88}
+.btn.ghost{border-color:transparent;background:none;color:var(--sub)}
+.btn.ghost:hover{background:var(--hover);color:var(--ink)}
+.btn:disabled{opacity:.4;pointer-events:none}
+svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+.app{display:grid;grid-template-rows:52px 1fr;height:100vh}
+header{display:flex;align-items:center;gap:10px;padding:0 16px;background:var(--panel);border-bottom:1px solid var(--line)}
+.logo{display:flex;align-items:center;gap:8px;font-weight:650;font-size:14px}
+.logo i{width:22px;height:22px;border-radius:6px;background:var(--ink);display:grid;place-items:center;color:#fff;font-style:normal;font-size:12px}
+header .spec{color:var(--faint);font-size:12px;margin-left:8px}
+header .sp{flex:1}
+.body{display:grid;grid-template-columns:232px minmax(0,1fr) 300px;min-height:0}
+.body.noinsp{grid-template-columns:232px minmax(0,1fr)}
+
+aside.side{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.side .top{padding:12px}
+.side .top .btn{width:100%;justify-content:center}
+.side .lbl{padding:4px 16px;font-size:11px;color:var(--faint);letter-spacing:.04em}
+.groups{overflow:auto;padding:0 8px 12px;flex:1}
+.grp{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer;position:relative}
+.grp:hover{background:var(--hover)}
+.grp.on{background:var(--selbg)}
+.grp img{width:36px;height:36px;border-radius:6px;object-fit:cover;background:var(--line);flex:none}
+.grp .t{min-width:0;flex:1}
+.grp .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.grp .x{opacity:0;border:0;background:none;padding:4px;border-radius:6px;color:var(--faint)}
+.grp:hover .x{opacity:1}
+.grp .x:hover{background:var(--line);color:var(--ink)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:0 6px;border-radius:99px;line-height:18px}
+.chip.ok{background:var(--okbg);color:var(--ok)}
+.chip.warn{background:var(--warnbg);color:var(--warn)}
+.chip.bad{background:var(--badbg);color:var(--bad)}
+.chip.mute{background:var(--hover);color:var(--sub)}
+
+main{overflow:auto;padding:20px 24px 28px;min-width:0}
+.ghead{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+.ghead input{font:inherit;font-size:18px;font-weight:650;border:1px solid transparent;border-radius:8px;padding:2px 8px;margin-left:-8px;background:none;min-width:120px}
+.ghead input:hover{border-color:var(--line)}
+.ghead input:focus{outline:none;border-color:var(--sel);background:var(--panel)}
+.ghead .path{color:var(--faint);font-size:12px}
+.ghead .sp{flex:1}
+
+.slots{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:16px}
+.slot{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:8px;position:relative;min-width:0}
+.slot canvas{width:64px;height:48px;border-radius:6px;background:var(--hover);flex:none;object-fit:cover}
+.slot .t{min-width:0}
+.slot .k{font-size:11px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot .n{font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.slot .m{font-size:11px;color:var(--sub)}
+.slot.empty{border-style:dashed;color:var(--sub);cursor:pointer}
+.slot.empty:hover,.slot.over{border-color:var(--sel);background:var(--selbg)}
+.slot .rep{position:absolute;inset:0;border-radius:var(--r);background:rgba(37,99,235,.08);border:1.5px dashed var(--sel);display:none;place-items:center;color:var(--sel);font-weight:600}
+.slot.over .rep{display:grid}
+.slot.active{box-shadow:0 0 0 2px var(--sel)}
+
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px}
+.stage .bar{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.stage .bar b{font-size:14px}
+.stage .bar .dim{color:var(--sub)}
+.stage .bar .sp{flex:1}
+.toggle{display:inline-flex;align-items:center;gap:6px;color:var(--sub);cursor:pointer;user-select:none}
+.toggle input{display:none}
+.toggle span{width:28px;height:16px;border-radius:99px;background:var(--line);position:relative;transition:.15s}
+.toggle span:after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:.15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.toggle input:checked+span{background:var(--sel)}
+.toggle input:checked+span:after{left:14px}
+.canvas{display:flex;justify-content:center;align-items:center;background:repeating-conic-gradient(#f4f4f5 0 25%,#fafafa 0 50%) 0 0/16px 16px;border-radius:8px;padding:16px;min-height:200px}
+.pv{position:relative;line-height:0;box-shadow:0 1px 3px rgba(0,0,0,.12),0 8px 24px rgba(0,0,0,.06);max-width:100%;background:#eee}
+.pv img{width:100%;display:block}
+.pv .g{position:absolute;left:0;right:0;border-top:1px dashed var(--guide);pointer-events:none}
+.pv .gl{position:absolute;right:4px;font:10px/1 ui-monospace,monospace;color:var(--guide);background:rgba(255,255,255,.85);padding:2px 4px;border-radius:3px;transform:translateY(-110%)}
+.pv .gv{position:absolute;top:0;bottom:0;border-left:1px dashed var(--vguide);pointer-events:none}
+.pv .gvl{position:absolute;bottom:3px;font:10px/1 ui-monospace,monospace;color:var(--vguide);background:rgba(255,255,255,.85);padding:2px 4px;border-radius:3px;transform:translateX(-50%);pointer-events:none}
+.noguide .g,.noguide .gl,.noguide .gv,.noguide .gvl{display:none}
+
+.strip{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-top:14px}
+.out{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:8px;cursor:pointer;min-width:0}
+.out:hover{border-color:#d4d4d8}
+.out.on{border-color:var(--sel);box-shadow:0 0 0 1px var(--sel)}
+.out .th{aspect-ratio:16/10;display:grid;place-items:center;background:var(--hover);border-radius:6px;overflow:hidden}
+.out .th img{max-width:100%;max-height:100%;display:block}
+.out .th .na{color:var(--faint);font-size:11px;text-align:center;padding:4px}
+.out .r{display:flex;align-items:center;justify-content:space-between;margin-top:6px;gap:4px}
+.out .r b{font-size:12px;font-weight:600}
+.out.missing{cursor:default;opacity:.6}
+
+aside.insp{background:var(--panel);border-left:1px solid var(--line);overflow:auto}
+.sec{padding:16px;border-bottom:1px solid var(--line)}
+.sec h3{margin:0 0 12px;font-size:11px;font-weight:600;color:var(--faint);letter-spacing:.04em;display:flex;align-items:center}
+.sec h3 .sp{flex:1}
+.ttl{font-size:16px;font-weight:650}
+.kv{display:grid;grid-template-columns:88px 1fr;row-gap:6px;font-size:12px;margin-top:10px}
+.kv span:nth-child(odd){color:var(--sub)}
+.field{margin-bottom:16px}
+.field:last-child{margin-bottom:0}
+.field .fl{display:flex;justify-content:space-between;margin-bottom:6px;color:var(--sub)}
+.field .fl b{color:var(--ink);font-weight:500;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--sel);margin:0}
+.seg{display:flex;background:var(--hover);border-radius:8px;padding:2px}
+.seg button{flex:1;border:0;background:none;padding:5px 6px;border-radius:6px;color:var(--sub)}
+.seg button.on{background:var(--panel);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.1);font-weight:550}
+.msg{font-size:12px;padding:8px 10px;border-radius:8px;margin-top:8px}
+.msg:first-child{margin-top:0}
+.msg.ok{background:var(--okbg);color:var(--ok)}
+.msg.warn{background:var(--warnbg);color:var(--warn)}
+.msg.bad{background:var(--badbg);color:var(--bad)}
+.msg.info{background:var(--hover);color:var(--sub)}
+.hint{font-size:11px;color:var(--faint);margin-top:12px}
+
+.empty{height:100%;display:grid;place-items:center}
+.dropbig{width:min(560px,100%);border:1.5px dashed #d4d4d8;border-radius:16px;padding:44px 28px;text-align:center;background:var(--panel);cursor:pointer}
+.dropbig:hover{border-color:var(--sel);background:var(--selbg)}
+.dropbig .ic{width:44px;height:44px;margin:0 auto 12px;border-radius:12px;background:var(--hover);display:grid;place-items:center}
+.dropbig .ic svg{width:22px;height:22px}
+.dropbig h2{margin:0 0 6px;font-size:16px}
+.dropbig p{margin:0;color:var(--sub)}
+.rules{display:grid;grid-template-columns:auto auto;gap:6px 16px;text-align:left;margin:20px auto 0;width:max-content;font-size:12px}
+.rules span:nth-child(odd){color:var(--faint)}
+.rules code{font:11px ui-monospace,monospace;background:var(--hover);padding:1px 5px;border-radius:4px}
+
+.dropveil{position:fixed;inset:0;background:rgba(37,99,235,.06);border:2px dashed var(--sel);z-index:20;display:none;place-items:center;font-size:16px;font-weight:600;color:var(--sel);pointer-events:none}
+.dropveil.on{display:grid}
+.busy{position:fixed;inset:0;background:rgba(255,255,255,.7);z-index:30;display:none;place-items:center}
+.busy.on{display:grid}
+.busy div{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 22px;box-shadow:0 8px 30px rgba(0,0,0,.08);display:flex;gap:10px;align-items:center}
+.spin{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--ink);border-radius:50%;animation:s .8s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 16px;border-radius:10px;display:none;z-index:40;max-width:80vw}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo"><i>写</i>写真書き出し</div>
+    <span class="spec">JPEG Q94 · 300ppi · sRGB</span>
+    <span class="sp"></span>
+    <button class="btn ghost" id="dirBtn" onclick="chooseDir()" style="display:none" title="書き出し先のフォルダを選ぶ"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span id="dirName">保存先フォルダ</span></button>
+    <button class="btn primary" id="exportAll" onclick="exportJobs(jobs)" disabled><svg viewBox="0 0 24 24"><path d="M12 3v12m0 0-4-4m4 4 4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg><span>書き出し</span></button>
+  </header>
+  <div class="body noinsp" id="body">
+    <aside class="side">
+      <div class="top"><button class="btn" onclick="pick()"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>新規グループ</button></div>
+      <div class="lbl">グループ</div>
+      <div class="groups" id="groups"></div>
+    </aside>
+    <main id="main"></main>
+    <aside class="insp" id="insp" style="display:none"></aside>
+  </div>
+</div>
+<input type="file" id="file" accept="image/*" multiple hidden>
+<div class="dropveil" id="veil">ドロップして新規グループを作成</div>
+<div class="busy" id="busy"><div><span class="spin"></span><span id="busyTxt">解析中…</span></div></div>
+<div id="toast"></div>
+<script src="vendor/ort.min.js"></script>
+<script src="vendor/pica.min.js"></script>
+<script src="vendor/jszip.min.js"></script>
+<script src="engine.js"></script>
+<script>
+const SLOT_ORDER=['person','profile','text01','text02'];
+const SLOT_NAME={person:'人物',profile:'profile',text01:'text1',text02:'text2'};
+const SLOT_HINT={person:'→ main/wide/top',profile:'',text01:'',text02:''};
+const RULES={
+  main:'頭頂 152px · 人物位置を選択可',wide:'頭頂 65px · 右寄せ · モノクロ',top:'頭頂 20px · 左右中央',
+  profile:'頭頂 20px · 頭部をガイド線に合わせる',text01:'サイズ調整のみ',text02:'サイズ調整のみ'};
+const VGUIDES={top:[250],profile:[157,375,593]};
+let PRE={},ORDER=[],jobs=[],cur=null,showGuide=true;
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function toast(t,ms=2600){const e=$('#toast');e.textContent=t;e.style.display='block';clearTimeout(e._t);e._t=setTimeout(()=>e.style.display='none',ms)}
+function busy(on,t){$('#busy').classList.toggle('on',on);if(t)$('#busyTxt').textContent=t}
+let ready=false;
+if(location.protocol==='file:'){
+  document.body.innerHTML='<div style="max-width:560px;margin:120px auto;font-size:16px;line-height:1.8"><b>この html ファイルは直接開けません。</b><br>Web サイトの URL から開いてください。</div>';
+  throw new Error('file mode');
+}
+PRE=Engine.PRESETS;ORDER=Engine.ORDER;
+(async()=>{
+  busy(true,'AI モデルを読み込み中…');
+  try{
+    await Engine.init((r,stage)=>busy(true,stage==='init'?'AI モデルを準備中…':`AI モデルを読み込み中… ${Math.round(r*100)}%（初回のみ・約 176MB）`));
+    ready=true;busy(false);
+  }catch(e){console.error(e);busy(true,'読み込みに失敗しました：'+(e.message||e)+'　ページを再読み込みしてください');}
+})();
+renderAll();
+if(window.showDirectoryPicker)$('#dirBtn').style.display='';
+
+/* ---------- 上传 ---------- */
+const file=$('#file');let pickSlot=null;
+function pick(slot=null){pickSlot=slot;file.multiple=!slot;file.click()}
+file.onchange=()=>{const s=pickSlot;pickSlot=null;if(file.files.length)(s?replaceSlot(s,file.files[0]):newGroup(file.files));file.value=''};
+let dragDepth=0;
+document.addEventListener('dragenter',e=>{e.preventDefault();dragDepth++});
+document.addEventListener('dragleave',()=>{if(--dragDepth<=0){dragDepth=0;$('#veil').classList.remove('on');document.querySelectorAll('.slot').forEach(x=>x.classList.remove('over'))}});
+document.addEventListener('dragover',e=>{e.preventDefault();const s=e.target.closest?.('.slot');$('#veil').classList.toggle('on',!s);document.querySelectorAll('.slot').forEach(x=>x.classList.toggle('over',x===s))});
+document.addEventListener('drop',e=>{
+  e.preventDefault();dragDepth=0;$('#veil').classList.remove('on');document.querySelectorAll('.slot').forEach(x=>x.classList.remove('over'));
+  const s=e.target.closest?.('.slot');
+  if(s&&cur)replaceSlot(s.dataset.slot,e.dataTransfer.files[0]);else newGroup(e.dataTransfer.files);
+});
+
+function defaults(){return {size:1,pos:null,dpos:0,dy:0,px:0.5,py:0.5,side:'auto',posKey:null}}
+async function callUpload(files,slot){
+  if(!ready)throw new Error('AI モデルを読み込み中です。少し待ってからもう一度お試しください');
+  files=[...files];const images=[];
+  for(let i=0;i<files.length;i++){
+    busy(true,files.length>1?`解析中… ${i+1}/${files.length}`:'解析中…');
+    try{images.push(await Engine.addImage(files[i],slot))}
+    catch(e){images.push({name:files[i].name.replace(/\.[^.]+$/,''),error:e.message||String(e)})}
+  }
+  return {name:Engine.jobName(files.map(f=>f.name)),images};
+}
+async function newGroup(files){
+  files=[...files].filter(f=>f.type.startsWith('image/')||/\.(jpe?g|png|tiff?|heic|webp)$/i.test(f.name));
+  if(!files.length)return;
+  busy(true,`解析中…（${files.length} 枚）`);
+  try{
+    const r=await callUpload(files);
+    const job={id:Math.random().toString(36).slice(2),outname:r.name,images:{},settings:{},notes:[],sel:null,crops:{}};
+    ORDER.forEach(n=>job.settings[n]=defaults());
+    const loose=[];
+    for(const im of r.images){if(im.error){job.notes.push(`${im.name}：${im.error}`);continue}
+      if(im.slot&&!Object.values(job.images).some(x=>x.slot===im.slot))job.images[im.id]=im;else loose.push(im)}
+    for(const im of loose){  // 文件名认不出用途：按顺序放进空位
+      const free=SLOT_ORDER.find(s=>!Object.values(job.images).some(x=>x.slot===s));
+      if(!free){job.notes.push(`${im.name}：余分なファイルのため無視しました`);Engine.remove(im.id);continue}
+      const r2=await Engine.setSlot(im.id,free);job.images[r2.id]=r2;
+      job.notes.push(`「${im.name}」はファイル名から用途を判別できなかったため「${SLOT_NAME[free]}」に入れました。違う場合は正しい画像を該当の枠にドラッグして差し替えてください。`);
+    }
+    job.sel=ORDER.find(n=>srcFor(job,n))||'main';
+    jobs.push(job);cur=job;renderAll();
+  }catch(e){toast('アップロードに失敗：'+(e.message||e),10000)}
+  busy(false);
+}
+async function replaceSlot(slot,f){
+  if(!f||!cur)return;busy(true,'解析中…');
+  try{
+    const r=await callUpload([f],slot);const im=r.images[0];
+    if(im.error)throw new Error(im.error);
+    for(const [id,o] of Object.entries(cur.images))if(o.slot===slot){delete cur.images[id];Engine.remove(id)}
+    cur.images[im.id]=im;
+    SLOTS_OF(slot).forEach(n=>{cur.settings[n]=defaults();delete cur.crops[n]});
+    cur.notes=cur.notes.filter(e=>!e.includes(`「${SLOT_NAME[slot]}」`));
+    if(!srcFor(cur,cur.sel))cur.sel=SLOTS_OF(slot)[0];
+    renderAll();
+  }catch(e){toast('差し替えに失敗：'+(e.message||e),8000)}
+  busy(false);
+}
+const SLOTS_OF=slot=>ORDER.filter(n=>PRE[n].slot===slot);
+const srcFor=(job,n)=>Object.values(job.images).find(i=>i.slot===PRE[n]?.slot)||null;
+
+/* ---------- 画面 ---------- */
+function renderAll(){
+  renderGroups();renderMain();renderInsp();
+  $('#exportAll').disabled=!jobs.length;
+  $('#exportAll span').textContent=jobs.length>1?`すべて書き出し（${jobs.length} グループ）`:'書き出し';
+}
+function jobStatus(j){
+  const have=ORDER.filter(n=>srcFor(j,n)).length;
+  const warns=ORDER.filter(n=>j.crops[n]?.warnings?.length||j.crops[n]?.error).length;
+  if(have<6)return `<span class="chip bad">${have}/6</span>`;
+  if(warns)return `<span class="chip warn">${warns} 件の注意</span>`;
+  return `<span class="chip ok">6/6 準備完了</span>`;
+}
+function renderGroups(){
+  $('#groups').innerHTML=jobs.length?jobs.map(j=>{
+    const im=Object.values(j.images).find(i=>i.slot==='person')||Object.values(j.images)[0];
+    return `<div class="grp ${j===cur?'on':''}" onclick="selectJob('${j.id}')">
+      ${im?`<img src="${im.thumb}">`:'<img>'}
+      <div class="t"><div class="n">${esc(j.outname)}</div>${jobStatus(j)}</div>
+      <button class="x" title="削除" onclick="event.stopPropagation();removeJob('${j.id}')"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>`}).join('')
+    :'<div style="padding:8px;color:var(--faint);font-size:12px">グループがありません</div>';
+}
+function selectJob(id){cur=jobs.find(j=>j.id===id);renderAll()}
+function removeJob(id){
+  const j=jobs.find(x=>x.id===id);Object.keys(j.images).forEach(i=>Engine.remove(i));
+  jobs=jobs.filter(x=>x!==j);if(cur===j)cur=jobs[jobs.length-1]||null;renderAll();
+}
+
+function renderMain(){
+  const m=$('#main');$('#body').classList.toggle('noinsp',!cur);$('#insp').style.display=cur?'':'none';
+  if(!cur){
+    m.innerHTML=`<div class="empty"><div class="dropbig" onclick="pick()">
+      <div class="ic"><svg viewBox="0 0 24 24"><path d="M12 16V4m0 0-4 4m4-4 4 4M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg></div>
+      <h2>同じグループの元画像 4 枚をドロップ</h2><p>ファイル名で自動振り分け、1 グループで 6 ファイルを書き出し</p>
+      <div class="rules">
+        <span><code>top</code> <code>main</code> <code>wide</code> を含む</span><span>main · wide · top</span>
+        <span><code>profile</code> を含む</span><span>profile</span>
+        <span><code>text1</code> / <code>text2</code> を含む</span><span>text01 / text02（サイズ調整のみ）</span>
+      </div></div></div>`;
+    return;
+  }
+  m.innerHTML=`
+    <div class="ghead">
+      <input id="gname" value="${esc(cur.outname)}" size="${nameSize(cur.outname)}" title="出力フォルダ名（クリックで編集）"
+        oninput="cur.outname=this.value;this.size=nameSize(this.value);$('#gpath').textContent=this.value;renderGroups()">
+      <span class="path">→ 「<span id="gpath">${esc(cur.outname)}</span>」フォルダに 6 ファイル</span>
+      <span class="sp"></span>
+      ${jobs.length>1?`<button class="btn" onclick="exportJobs([cur])">このグループだけ書き出し</button>`:''}
+    </div>
+    ${cur.notes.map(e=>`<div class="msg warn" style="margin:0 0 10px">${esc(e)}</div>`).join('')}
+    <div class="slots">${SLOT_ORDER.map(slotHTML).join('')}</div>
+    <div class="stage">
+      <div class="bar"><b id="stTitle"></b><span class="dim" id="stDim"></span><span class="sp"></span>
+        <label class="toggle"><input type="checkbox" ${showGuide?'checked':''} onchange="showGuide=this.checked;$('#pv').classList.toggle('noguide',!showGuide)"><span></span>ガイド線</label></div>
+      <div class="canvas"><div class="pv ${showGuide?'':'noguide'}" id="pv"><img id="pvimg"><div class="g" id="g"></div><div class="gl" id="gl"></div><span id="vg"></span></div></div>
+    </div>
+    <div class="strip">${ORDER.map(outHTML).join('')}</div>`;
+  SLOT_ORDER.forEach(drawSlot);
+  ORDER.forEach(n=>{const c=cur.crops[n];if(srcFor(cur,n)){if(c&&c.url)paintOut(n,c);else refresh(n,true)}});
+  showStage();
+}
+const nameSize=v=>Math.max(6,Math.ceil([...v].reduce((a,c)=>a+(c.charCodeAt(0)>255?2:1),0)*0.95));
+function slotHTML(s){
+  const im=Object.values(cur.images).find(i=>i.slot===s);
+  const act=PRE[cur.sel]?.slot===s?'active':'';
+  if(!im)return `<div class="slot empty ${act}" data-slot="${s}" onclick="pick('${s}')"><canvas></canvas><div class="t"><div class="k">${SLOT_NAME[s]} ${SLOT_HINT[s]}</div><div class="n">クリックまたはドロップで追加</div></div><div class="rep">ここにドロップ</div></div>`;
+  const err=im.det_error&&(s==='person'||s==='profile');
+  return `<div class="slot ${act}" data-slot="${s}" title="別の画像をドロップすると差し替えられます">
+    <canvas id="sc_${s}"></canvas>
+    <div class="t"><div class="k">${SLOT_NAME[s]} ${SLOT_HINT[s]}</div><div class="n">${esc(im.name)}</div>
+    <div class="m" ${err?'style="color:var(--bad)"':''}>${err?esc(im.det_error):`${im.w} × ${im.h}`}</div></div>
+    <div class="rep">この画像に差し替え</div></div>`;
+}
+function drawSlot(s){
+  if(!cur)return;
+  const im=Object.values(cur.images).find(i=>i.slot===s);const cv=document.getElementById('sc_'+s);if(!im||!cv)return;
+  const go=()=>{const img=im._thumb;cv.width=img.width;cv.height=img.height;const x=cv.getContext('2d');x.drawImage(img,0,0);
+    const n=PRE[cur.sel]?.slot===s?cur.sel:SLOTS_OF(s)[0];const c=cur.crops[n];
+    if(c&&c.box){const sc=img.width/im.w,b=c.box;x.fillStyle='rgba(0,0,0,.45)';
+      x.beginPath();x.rect(0,0,cv.width,cv.height);x.rect(b[0]*sc,b[1]*sc,(b[2]-b[0])*sc,(b[3]-b[1])*sc);x.fill('evenodd');
+      x.strokeStyle='#fff';x.lineWidth=Math.max(2,img.width/150);x.strokeRect(b[0]*sc,b[1]*sc,(b[2]-b[0])*sc,(b[3]-b[1])*sc)}};
+  if(im._thumb)go();else{const img=new Image();img.onload=()=>{im._thumb=img;go()};img.src=im.thumb}
+}
+function outHTML(n){
+  const p=PRE[n],has=srcFor(cur,n);
+  return `<div class="out ${n===cur.sel?'on':''} ${has?'':'missing'}" id="o_${n}" ${has?`onclick="selectOut('${n}')"`:''}>
+    <div class="th">${has?`<img id="ot_${n}">`:`<span class="na">${SLOT_NAME[p.slot]}の元画像なし</span>`}</div>
+    <div class="r"><b>${n}</b><span id="os_${n}">${has?'':'<span class="chip mute">スキップ</span>'}</span></div>
+    <div style="color:var(--faint);font-size:11px">${p.w}×${p.h}</div></div>`;
+}
+function selectOut(n){
+  cur.sel=n;
+  document.querySelectorAll('.out').forEach(o=>o.classList.toggle('on',o.id==='o_'+n));
+  document.querySelectorAll('.slot').forEach(s=>s.classList.toggle('active',s.dataset.slot===PRE[n].slot));
+  SLOT_ORDER.forEach(drawSlot);showStage();renderInsp();
+}
+function showStage(){
+  const n=cur.sel,p=PRE[n];if(!p||!$('#pv'))return;
+  $('#stTitle').textContent=n+'.jpg';$('#stDim').textContent=`${p.w} × ${p.h} · ${RULES[n]}`;
+  const pv=$('#pv');pv.style.aspectRatio=`${p.w}/${p.h}`;pv.style.width='100%';pv.style.maxWidth=Math.min(p.w,900)+'px';
+  $('#vg').innerHTML=(VGUIDES[n]||[]).map(x=>`<div class="gv" style="left:${x/p.w*100}%"></div><div class="gvl" style="left:${x/p.w*100}%">${x}</div>`).join('');
+  const c=cur.crops[n],img=$('#pvimg');
+  if(!srcFor(cur,n)){img.removeAttribute('src');}
+  else if(c&&c.url&&img.getAttribute('src')!==c.url)img.src=c.url;
+  const show=c&&c.head_top_out!=null;$('#g').style.display=$('#gl').style.display=show?'':'none';
+  if(show){const t=c.head_top_out/p.h*100;$('#g').style.top=$('#gl').style.top=t+'%';$('#gl').textContent='頭頂 '+Math.round(c.head_top_out)+'px'}
+}
+
+/* ---------- 右侧设置 ---------- */
+function renderInsp(){
+  const el=$('#insp');if(!cur){el.innerHTML='';return}
+  const n=cur.sel,p=PRE[n],s=cur.settings[n],im=srcFor(cur,n),c=cur.crops[n];
+  if(!p)return;
+  if(!im){el.innerHTML=`<div class="sec"><div class="ttl">${n}.jpg</div><div class="msg info" style="margin-top:10px">${SLOT_NAME[p.slot]}の元画像がないため、書き出し時はスキップします。上の該当する枠から追加してください。</div></div>`;return}
+  let f='';
+  if(p.mode==='plain'){
+    f=rng('size','画面サイズ',100,200,1,s.size*100,'%')+rng('px','左右位置',0,100,1,s.px*100,'%')+rng('py','上下位置',0,100,1,s.py*100,'%');
+  }else{
+    if(p.positions)f+=segHTML('人物の位置','pos',{left:'左',center:'中央',right:'右'},s.posKey||'right');
+    if(p.mode==='profile')f+=segHTML('頭部ガイド線','side',{auto:'自動',left:'左線 157',right:'右線 593'},s.side);
+    f+=rng('size',p.mode==='profile'?'画面サイズ':'人物サイズ',p.mode==='profile'?100:60,160,1,s.size*100,'%')
+      +rng('dpos','左右の微調整',-20,20,0.5,s.dpos*100,'%')+rng('dy','頭頂の微調整',-40,40,1,s.dy,'px');
+  }
+  el.innerHTML=`
+    <div class="sec"><div class="ttl">${n}.jpg</div>
+      <div class="kv"><span>サイズ</span><span>${p.w} × ${p.h} px</span><span>ルール</span><span>${RULES[n]}</span><span>元画像</span><span style="word-break:break-all">${esc(im.name)}</span></div></div>
+    <div class="sec"><h3>調整<span class="sp"></span><button class="btn ghost" style="padding:2px 8px" onclick="resetOut()">リセット</button></h3>${f}
+      <div class="hint">スライダーをダブルクリックで個別にリセット</div></div>
+    <div class="sec"><h3>状態</h3><div id="istat">${statusHTML(c)}</div></div>`;
+}
+const DEF={size:100,px:50,py:50,dpos:0,dy:0};
+function rng(k,label,min,max,step,val,unit){
+  const fmt=v=>(unit==='%'?(+v).toFixed(step<1?1:0):v)+unit;
+  return `<div class="field"><div class="fl">${label}<b>${fmt(val)}</b></div>
+    <input type="range" min="${min}" max="${max}" step="${step}" value="${val}"
+      ondblclick="this.value=${DEF[k]};this.dispatchEvent(new Event('input'))"
+      oninput="this.parentNode.querySelector('b').textContent=(${fmt.toString()})(this.value);setV('${k}',this.value/${k==='dy'?1:100})"></div>`;
+}
+function segHTML(label,k,opts,on){
+  return `<div class="field"><div class="fl">${label}</div><div class="seg">${Object.entries(opts).map(([v,t])=>`<button class="${on===v?'on':''}" onclick="setSeg('${k}','${v}',this)">${t}</button>`).join('')}</div></div>`;
+}
+function setSeg(k,v,btn){
+  const s=cur.settings[cur.sel];
+  if(k==='pos'){s.posKey=v;s.pos=PRE[cur.sel].positions[v]}else s[k]=v;
+  [...btn.parentNode.children].forEach(b=>b.classList.toggle('on',b===btn));refresh(cur.sel);
+}
+function setV(k,v){cur.settings[cur.sel][k]=+v;refresh(cur.sel)}
+function resetOut(){cur.settings[cur.sel]=defaults();renderInsp();refresh(cur.sel,true)}
+function statusHTML(c){
+  if(!c)return '<div class="msg info">計算中…</div>';
+  if(c.error)return `<div class="msg bad">${esc(c.error)}</div>`;
+  let h=c.side?`<div class="msg info">頭部を${c.side==='left'?'左線 157px':'右線 593px'}に合わせました${cur.settings[cur.sel].side==='auto'?'（自動判定）':''}</div>`:'';
+  h+=c.warnings.length?c.warnings.map(w=>`<div class="msg warn">${esc(w)}</div>`).join(''):'<div class="msg ok">✓ ルール通り</div>';
+  return h+`<div class="kv" style="margin-top:12px"><span>切り抜き範囲</span><span>${Math.round(c.box[2]-c.box[0])} × ${Math.round(c.box[3]-c.box[1])} px</span><span>倍率</span><span>${c.k.toFixed(3)}</span></div>`;
+}
+
+/* ---------- 计算 ---------- */
+const timers={},seqs={};
+const params=s=>({size:s.size,pos:s.pos,dpos:s.dpos,dy:s.dy,px:s.px,py:s.py,side:s.side});
+function paintOut(n,c){
+  const t=document.getElementById('ot_'+n);if(t&&c.url&&t.getAttribute('src')!==c.url)t.src=c.url;
+  const st=document.getElementById('os_'+n);
+  if(st)st.innerHTML=c.error?'<span class="chip bad">エラー</span>':c.warnings.length?'<span class="chip warn">注意</span>':'<span class="chip ok">✓</span>';
+}
+function refresh(n,now){
+  const job=cur;clearTimeout(timers[job.id+n]);
+  timers[job.id+n]=setTimeout(async()=>{
+    const im=srcFor(job,n);if(!im)return;
+    const ps=params(job.settings[n]);
+    const key=job.id+n,tok=(seqs[key]=(seqs[key]||0)+1);
+    let c;try{c=Engine.crop(im.id,n,ps)}catch(e){c={error:e.message||String(e)}}
+    if(!c.error){try{c.url=URL.createObjectURL(await Engine.previewBlob(im.id,n,ps))}catch(e){c={error:e.message||String(e)}}}
+    if(tok!==seqs[key]){if(c.url)URL.revokeObjectURL(c.url);return}
+    const old=job.crops[n]&&job.crops[n].url;job.crops[n]=c;if(old)setTimeout(()=>URL.revokeObjectURL(old),3000);renderGroups();if(job!==cur)return;
+    paintOut(n,c);
+    if(n===cur.sel){showStage();const is=$('#istat');if(is)is.innerHTML=statusHTML(c);drawSlot(PRE[n].slot)}
+  },now?0:120);
+}
+
+/* ---------- 导出 ---------- */
+let dirHandle=null;
+async function chooseDir(){
+  try{dirHandle=await window.showDirectoryPicker({mode:'readwrite',id:'photo-export'});$('#dirName').textContent='保存先：'+dirHandle.name;return true}
+  catch(e){return false}
+}
+async function exportJobs(list){
+  if(!list.length)return;
+  const tasks=[];for(const j of list)for(const n of ORDER){const im=srcFor(j,n);if(im)tasks.push({j,n,id:im.id})}
+  if(!tasks.length){toast('書き出せる内容がありません');return}
+  if(window.showDirectoryPicker&&!dirHandle){if(!(await chooseDir()))return}
+  const safe=s=>(s||'photo').replace(/[\\/:*?"<>|]+/g,'_').trim()||'photo';
+  try{
+    const files=[];
+    for(let i=0;i<tasks.length;i++){const t=tasks[i];busy(true,`書き出し中… ${i+1}/${tasks.length}`);
+      files.push({folder:safe(t.j.outname),name:t.n+'.jpg',bytes:await Engine.exportFile(t.id,t.n,params(t.j.settings[t.n]))})}
+    const folders=[...new Set(files.map(f=>f.folder))];
+    if(dirHandle){
+      if((await dirHandle.queryPermission?.({mode:'readwrite'}))!=='granted'&&(await dirHandle.requestPermission?.({mode:'readwrite'}))!=='granted')throw new Error('フォルダへの書き込みが許可されませんでした');
+      for(const f of files){const d=await dirHandle.getDirectoryHandle(f.folder,{create:true});const fh=await d.getFileHandle(f.name,{create:true});const w=await fh.createWritable();await w.write(f.bytes);await w.close()}
+      toast(`${files.length} 枚を書き出しました → ${dirHandle.name}/`+folders.join('、'),6000);
+    }else{
+      const zip=new JSZip();for(const f of files)zip.folder(f.folder).file(f.name,f.bytes);
+      const blob=await zip.generateAsync({type:'blob',compression:'STORE'});
+      const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=(folders.length===1?folders[0]:'書き出し')+'.zip';document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(a.href),10000);
+      toast(`${files.length} 枚を ZIP でダウンロードしました`,6000);
+    }
+  }catch(e){console.error(e);toast('書き出しに失敗：'+(e.message||e),10000)}
+  busy(false);
+}
+</script>
+</body>
+</html>
