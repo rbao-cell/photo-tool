@@ -23,8 +23,8 @@
     trellis_opt_table: false, trellis_loops: 1, auto_subsample: false, chroma_subsample: 1,
     separate_chroma_quality: false, chroma_quality: 94,
   };
-  const U2NET_PARTS = 8;
-  const CACHE_NAME = 'photo-tool-models-v1';
+  const W16_PARTS = 9;   // u2net の重み（float16 で保存し、読み込み時に float32 へ戻す）
+  const CACHE_NAME = 'photo-tool-models-v2';
 
   // ------------------------------------------------------------ ファイル名 → 用途
   function guessSlot(filename) {
@@ -79,23 +79,36 @@
     ort.env.wasm.wasmPaths = base + 'vendor/';
     ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
     ort.env.wasm.proxy = true;
-    const TOTAL = 176000000 + 240000;
+    const TOTAL = 87952768 + 240000 + 100000;
     let got = 0;
     const tick = n => { got += n; onProgress && onProgress(Math.min(0.99, got / TOTAL)); };
     const yBytes = await fetchBytes(base + 'models/yunet.onnx', tick);
     srgbIcc = await fetchBytes(base + 'models/srgb.icc');
+    const graph = await fetchBytes(base + 'models/u2net.onnx', tick);
     const parts = [];
-    for (let i = 0; i < U2NET_PARTS; i++) parts.push(await fetchBytes(base + `models/u2net.part${i}`, tick));
+    for (let i = 0; i < W16_PARTS; i++) parts.push(await fetchBytes(base + `models/w16.part${i}`, tick));
     const total = parts.reduce((a, p) => a + p.length, 0);
-    const uBytes = new Uint8Array(total); let o = 0;
-    for (const p of parts) { uBytes.set(p, o); o += p.length; }
+    const h = new Uint8Array(total); let o = 0;
+    for (const p of parts) { h.set(p, o); o += p.length; }
+    const weights = f16ToF32(new Uint16Array(h.buffer, 0, total >> 1));
     onProgress && onProgress(1, 'init');
     const opt = { executionProviders: ['wasm'], graphOptimizationLevel: 'all' };
     yunet = await ort.InferenceSession.create(yBytes, opt);
-    u2net = await ort.InferenceSession.create(uBytes, opt);
+    u2net = await ort.InferenceSession.create(graph, { ...opt, externalData: [{ path: 'weights.bin', data: new Uint8Array(weights.buffer) }] });
     const mod = await import(base + 'vendor/jsquash/encode.js');
     encodeFn = mod.default;
     picaInst = window.pica ? window.pica({ features: ['js', 'wasm'] }) : null;
+  }
+
+  function f16ToF32(src) {
+    const out = new Float32Array(src.length), u = new Uint32Array(out.buffer);
+    for (let i = 0; i < src.length; i++) {
+      const x = src[i], sgn = (x & 0x8000) << 16, e = (x >> 10) & 0x1f, m = x & 0x3ff;
+      if (e === 0) { out[i] = (sgn ? -1 : 1) * m * 5.960464477539063e-8; }
+      else if (e === 31) { u[i] = sgn | 0x7f800000 | (m << 13); }
+      else { u[i] = sgn | ((e + 112) << 23) | (m << 13); }
+    }
+    return out;
   }
 
   // ------------------------------------------------------------ 共通ユーティリティ
