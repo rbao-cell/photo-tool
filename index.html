@@ -177,7 +177,7 @@ input[type=range]{width:100%;accent-color:var(--sel);margin:0}
 <script src="vendor/ort.min.js"></script>
 <script src="vendor/pica.min.js"></script>
 <script src="vendor/jszip.min.js"></script>
-<script src="engine.js?v=5"></script>
+<script src="engine.js?v=6"></script>
 <script>
 const SLOT_ORDER=['person','profile','text01','text02'];
 const SLOT_NAME={person:'人物',profile:'profile',text01:'text1',text02:'text2'};
@@ -375,8 +375,9 @@ function showStage(){
   const c=cur.crops[n],img=$('#pvimg');
   if(!srcFor(cur,n)){img.removeAttribute('src');}
   else if(c&&c.url&&img.getAttribute('src')!==c.url){img.onload=()=>{if(!dragSt)img.style.transform=''};img.src=c.url}
-  const show=c&&c.head_top_out!=null;$('#g').style.display=$('#gl').style.display=show?'':'none';
-  if(show){const t=c.head_top_out/p.h*100;$('#g').style.top=$('#gl').style.top=t+'%';$('#gl').textContent='頭頂 '+Math.round(c.head_top_out)+'px'}
+  // ガイド線はルールの位置に固定（写真を動かしても動かない）
+  const show=p.head_top!=null;$('#g').style.display=$('#gl').style.display=show?'':'none';
+  if(show){const t=p.head_top/p.h*100;$('#g').style.top=$('#gl').style.top=t+'%';$('#gl').textContent='頭頂 '+p.head_top+'px'}
 }
 
 /* ---------- プレビューを直接ドラッグ / ホイールで調整 ---------- */
