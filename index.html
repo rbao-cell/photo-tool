@@ -177,7 +177,7 @@ input[type=range]{width:100%;accent-color:var(--sel);margin:0}
 <script src="vendor/ort.min.js"></script>
 <script src="vendor/pica.min.js"></script>
 <script src="vendor/jszip.min.js"></script>
-<script src="engine.js?v=6"></script>
+<script src="engine.js?v=7"></script>
 <script>
 const SLOT_ORDER=['person','profile','text01','text02'];
 const SLOT_NAME={person:'人物',profile:'profile',text01:'text1',text02:'text2'};
@@ -221,7 +221,7 @@ document.addEventListener('drop',e=>{
   if(s&&cur)replaceSlot(s.dataset.slot,e.dataTransfer.files[0]);else newGroup(e.dataTransfer.files);
 });
 
-function defaults(){return {size:1,pos:null,dpos:0,dy:0,px:0.5,py:0.5,side:'auto',posKey:null}}
+function defaults(){return {size:1,pos:null,dpos:0,dy:0,px:0.5,py:0.5,side:'auto',fill:'pad',posKey:null}}
 async function callUpload(files,slot){
   if(!ready)throw new Error('AI モデルを読み込み中です。少し待ってからもう一度お試しください');
   files=[...files];const images=[];
@@ -441,6 +441,7 @@ function renderInsp(){
   }else{
     if(p.positions)f+=segHTML('人物の位置','pos',{left:'左',center:'中央',right:'右'},s.posKey||'right');
     if(p.mode==='profile')f+=segHTML('頭部ガイド線','side',{auto:'自動',left:'左線 157',right:'右線 593'},s.side);
+    f+=segHTML('頭の上の余白が足りないとき','fill',{pad:'背景を延長',zoom:'拡大して合わせる'},s.fill||'pad');
     f+=rng('size',p.mode==='profile'?'画面サイズ':'人物サイズ',p.mode==='profile'?100:50,250,1,s.size*100,'%')
       +rng('dpos','左右の微調整',-50,50,0.5,s.dpos*100,'%')+rng('dy','頭頂の微調整',-200,200,1,s.dy,'px');
   }
@@ -481,7 +482,7 @@ function statusHTML(c){
 
 /* ---------- 计算 ---------- */
 const timers={},seqs={};
-const params=s=>({size:s.size,pos:s.pos,dpos:s.dpos,dy:s.dy,px:s.px,py:s.py,side:s.side});
+const params=s=>({size:s.size,pos:s.pos,dpos:s.dpos,dy:s.dy,px:s.px,py:s.py,side:s.side,fill:s.fill||'pad'});
 function paintOut(n,c){
   const t=document.getElementById('ot_'+n);if(t&&c.url&&t.getAttribute('src')!==c.url)t.src=c.url;
   const st=document.getElementById('os_'+n);

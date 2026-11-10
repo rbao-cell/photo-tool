@@ -314,6 +314,7 @@
   // ------------------------------------------------------------ 切り抜き計算
   function computeCrop(det, name, o = {}, imgSize = null) {
     const size = o.size ?? 1, pos = o.pos ?? null, dy = o.dy ?? 0, px = o.px ?? 0.5, py = o.py ?? 0.5, dpos = o.dpos ?? 0;
+    const fill = o.fill || 'pad';  // 頭の上の余白が足りないとき：pad = 背景を延長 / zoom = 拡大して合わせる
     let side = o.side || 'auto';
     const p = PRESETS[name], W = p.w, H = p.h;
     const [iw, ih] = det ? [det.img_w, det.img_h] : imgSize;
@@ -332,7 +333,7 @@
     const kRef = p.mode === 'person' ? p.face_ratio * H / det.face[3] : kCover;
     const T0 = p.head_top;  // 倍率はルール通りの頭頂位置で決める（手動の上下移動では拡大しない）
     const need = [kCover];
-    if (T0 > 0 && hy > 0) need.push(T0 / hy);
+    if (fill === 'zoom' && T0 > 0 && hy > 0) need.push(T0 / hy);
     if (ih - hy > 0) need.push((H - T0) / (ih - hy));
     const [hx0, hx1] = det.head_x || [det.face[0], det.face[0] + det.face[2]];
     if (p.mode === 'profile') {
@@ -351,8 +352,10 @@
 
     const cw = W / k, ch = H / k;
     const y0raw = hy - T / k;
-    const y0 = Math.min(Math.max(0, y0raw), ih - ch);
+    // pad モードでは上にはみ出してよい（はみ出した部分は背景を延長して埋める）。最大で画面の 60% まで
+    const y0 = fill === 'pad' ? Math.max(-0.6 * ch, Math.min(y0raw, ih - ch)) : Math.min(Math.max(0, y0raw), ih - ch);
     if (dy && Math.abs(y0 - y0raw) * k > 1) warns.push('元画像の端に達しているため、これ以上上下に動かせません（人物サイズを大きくすると動かせます）');
+    if (-y0 * k >= 3) warns.push(`頭の上の余白が足りないため、上部 ${Math.round(-y0 * k)}px を背景で延長しています`);
 
     let x0;
     if (p.mode === 'profile') {
@@ -392,10 +395,38 @@
     }
     x.putImageData(im, 0, 0);
   }
+  // 切り抜き範囲を canvas に描く。上にはみ出した部分は元画像の上端の色を引き伸ばして（ぼかして）埋める
+  function sourceRegion(bitmap, box, scale) {
+    const [x0, y0, x1, y1] = box, cw = x1 - x0, ch = y1 - y0;
+    if (y0 >= 0) return null;
+    const W = Math.max(1, Math.round(cw * scale)), H = Math.max(1, Math.round(ch * scale));
+    const c = canvas(W, H), x = ctx2d(c);
+    const padH = Math.round(-y0 * scale);
+    // 上端の帯（元画像の高さの 2%）を小さく縮めてから引き伸ばす → 自然なぼかしになる
+    const strip = Math.max(2, Math.round(bitmap.height * 0.02));
+    const tiny = canvas(Math.max(4, Math.round(W / 40)), 2);
+    ctx2d(tiny).drawImage(bitmap, x0, 0, cw, strip, 0, 0, tiny.width, tiny.height);
+    x.drawImage(tiny, 0, 0, tiny.width, 1, 0, 0, W, padH + 2);
+    // 画像本体
+    const sh = y1;  // 0 〜 y1
+    x.drawImage(bitmap, x0, 0, cw, sh, 0, padH, W, H - padH);
+    // つなぎ目をなじませる（上端 24px を少しずつ透明にして延長部分と重ねる）
+    const blend = Math.min(Math.round(24 * scale) + 4, Math.round((H - padH) / 4));
+    if (blend > 1) {
+      const g = canvas(W, blend), gx = ctx2d(g);
+      gx.drawImage(tiny, 0, 1, tiny.width, 1, 0, 0, W, blend);
+      const m = gx.createLinearGradient(0, 0, 0, blend); m.addColorStop(0, 'rgba(0,0,0,1)'); m.addColorStop(1, 'rgba(0,0,0,0)');
+      gx.globalCompositeOperation = 'destination-in'; gx.fillStyle = m; gx.fillRect(0, 0, W, blend);
+      x.drawImage(g, 0, padH);
+    }
+    return c;
+  }
   // プレビュー（速さ優先）
   function renderPreview(bitmap, name, crop) {
     const p = PRESETS[name], [x0, y0, x1, y1] = crop.box;
-    const out = drawScaled(bitmap, x0, y0, x1 - x0, y1 - y0, p.w, p.h);
+    const padded = sourceRegion(bitmap, crop.box, Math.min(1, 2 * p.w / (x1 - x0)));
+    const out = padded ? drawScaled(padded, 0, 0, padded.width, padded.height, p.w, p.h)
+                       : drawScaled(bitmap, x0, y0, x1 - x0, y1 - y0, p.w, p.h);
     if (p.gray) toGray(out);
     return out;
   }
@@ -403,15 +434,20 @@
   async function renderFinal(bitmap, name, crop) {
     const p = PRESETS[name], [x0, y0, x1, y1] = crop.box;
     const out = canvas(p.w, p.h);
+    const padded = sourceRegion(bitmap, crop.box, 1);
     try {
       if (!picaInst) throw new Error('no pica');
-      const sw = Math.round(x1 - x0), sh = Math.round(y1 - y0);
-      const src = canvas(sw, sh); ctx2d(src).drawImage(bitmap, x0, y0, x1 - x0, y1 - y0, 0, 0, sw, sh);
+      let src = padded;
+      if (!src) {
+        const sw = Math.round(x1 - x0), sh = Math.round(y1 - y0);
+        src = canvas(sw, sh); ctx2d(src).drawImage(bitmap, x0, y0, x1 - x0, y1 - y0, 0, 0, sw, sh);
+      }
       await picaInst.resize(src, out, { filter: 'lanczos3', unsharpAmount: 0 });
       src.width = src.height = 1;
     } catch (e) {
       console.warn('pica fallback', e);
-      ctx2d(out).drawImage(drawScaled(bitmap, x0, y0, x1 - x0, y1 - y0, p.w, p.h), 0, 0);
+      const sc = padded ? drawScaled(padded, 0, 0, padded.width, padded.height, p.w, p.h) : drawScaled(bitmap, x0, y0, x1 - x0, y1 - y0, p.w, p.h);
+      ctx2d(out).drawImage(sc, 0, 0);
     }
     if (p.gray) toGray(out);
     return out;
