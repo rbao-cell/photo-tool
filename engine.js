@@ -328,10 +328,12 @@
     }
 
     const T = p.head_top + dy, hy = det.head_y;
-    const kRef = p.mode === 'person' ? p.face_ratio * H / det.face[3] * size : kCover * Math.max(1, size);
-    const need = [kRef, kCover];
-    if (T > 0 && hy > 0) need.push(T / hy);
-    if (ih - hy > 0) need.push((H - T) / (ih - hy));
+    // kRef：ルール通りの倍率（人物サイズ 100% 時）。kMin：元画像からはみ出さないための最低倍率
+    const kRef = p.mode === 'person' ? p.face_ratio * H / det.face[3] : kCover;
+    const T0 = p.head_top;  // 倍率はルール通りの頭頂位置で決める（手動の上下移動では拡大しない）
+    const need = [kCover];
+    if (T0 > 0 && hy > 0) need.push(T0 / hy);
+    if (ih - hy > 0) need.push((H - T0) / (ih - hy));
     const [hx0, hx1] = det.head_x || [det.face[0], det.face[0] + det.face[2]];
     if (p.mode === 'profile') {
       if (side !== 'left' && side !== 'right') side = (hx0 + hx1) / 2 >= iw / 2 ? 'right' : 'left';
@@ -339,35 +341,44 @@
       if (side === 'left') need.push(hx0 > 0 ? gl / hx0 : kRef, (W - gl) / Math.max(1, iw - hx0));
       else need.push(hx1 > 0 ? gr / hx1 : kRef, (W - gr) / Math.max(1, iw - hx1));
     }
-    const k = Math.max(...need);
-    if (p.mode === 'person' && k > kRef * 1.03) warns.push(`元画像の範囲が足りず、人物を ${(k / kRef * size * 100).toFixed(0)}% に拡大`);
-    if (p.mode === 'profile' && k > kRef * 1.10) warns.push(`元画像の範囲が足りず、画面を ${(k / kCover * 100).toFixed(0)}% に拡大`);
+    const kMin = Math.max(...need);
+    const kAuto = Math.max(kRef, kMin);
+    // サイズのスライダーは「自動で決まった大きさ」に対する倍率（100% より上は必ず拡大される）
+    const k = Math.max(kAuto * size, kMin);
+    if (p.mode === 'person' && kAuto > kRef * 1.03) warns.push(`元画像の範囲が足りず、人物を ${(kAuto / kRef * 100).toFixed(0)}% に拡大`);
+    if (p.mode === 'profile' && kAuto > kCover * 1.10) warns.push(`元画像の範囲が足りず、画面を ${(kAuto / kCover * 100).toFixed(0)}% に拡大`);
+    if (size < 1 && k <= kMin * 1.001) warns.push('これ以上小さくできません（元画像の端に達しています）');
 
     const cw = W / k, ch = H / k;
-    const y0 = Math.min(Math.max(0, hy - T / k), ih - ch);
+    const y0raw = hy - T / k;
+    const y0 = Math.min(Math.max(0, y0raw), ih - ch);
+    if (dy && Math.abs(y0 - y0raw) * k > 1) warns.push('元画像の端に達しているため、これ以上上下に動かせません（人物サイズを大きくすると動かせます）');
 
     let x0;
     if (p.mode === 'profile') {
       const [gl, gr] = p.guides;
-      x0 = side === 'left' ? hx0 - gl / k : hx1 - gr / k;
-      x0 -= dpos * cw;
+      var xBase = side === 'left' ? hx0 - gl / k : hx1 - gr / k;
+      x0 = xBase - dpos * cw;
       const xc = Math.min(Math.max(0, x0), iw - cw);
       if (Math.abs(xc - x0) > 1) warns.push('元画像の左右が足りず、頭部をガイド線に合わせられません');
       x0 = xc;
     } else {
-      const cx = bodyCenter(det, y0, y0 + ch);
-      let target = pos !== null ? pos : p.center;
+      var cx = bodyCenter(det, y0, y0 + ch);
+      var tBase = pos !== null ? pos : p.center;
+      let target = tBase;
       target += dpos;
       x0 = cx - target * cw;
       const xc = Math.min(Math.max(0, x0), iw - cw);
-      if (Math.abs(xc - x0) > 1) warns.push('元画像の左右が足りず、人物の位置がずれています');
+      if (Math.abs(xc - x0) > 1) warns.push(dpos ? '元画像の端に達しているため、これ以上左右に動かせません（人物サイズを大きくすると動かせます）' : '元画像の左右が足りず、人物の位置がずれています');
       x0 = xc;
     }
     if (k > 1.02) warns.push(`元画像の解像度が不足、${k.toFixed(2)} 倍に拡大（ぼやけます）`);
     const realTop = (hy - y0) * k;
-    if (Math.abs(realTop - T) > 2) warns.push(`頭頂の実際の位置 ${realTop.toFixed(0)}px`);
+    if (Math.abs(realTop - T) > 2 && !dy) warns.push(`頭頂の実際の位置 ${realTop.toFixed(0)}px`);
     const r = { box: [x0, y0, x0 + cw, y0 + ch], k, head_top_out: Math.round(realTop * 10) / 10, target_head_top: T, warnings: warns };
-    if (p.mode === 'profile') { r.side = side; r.head_x_out = [(hx0 - x0) * k, (hx1 - x0) * k]; }
+    if (p.mode === 'profile') { r.side = side; r.head_x_out = [(hx0 - x0) * k, (hx1 - x0) * k]; r.dpos_eff = (xBase - x0) / cw; }
+    else r.dpos_eff = (cx - x0) / cw - tBase;
+    r.dy_eff = realTop - p.head_top;  // 端で止まったときの実際の移動量
     return r;
   }
 

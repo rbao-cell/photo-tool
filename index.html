@@ -86,8 +86,10 @@ main{overflow:auto;padding:20px 24px 28px;min-width:0}
 .toggle input:checked+span{background:var(--sel)}
 .toggle input:checked+span:after{left:14px}
 .canvas{display:flex;justify-content:center;align-items:center;background:repeating-conic-gradient(#f4f4f5 0 25%,#fafafa 0 50%) 0 0/16px 16px;border-radius:8px;padding:16px;min-height:200px}
-.pv{position:relative;line-height:0;box-shadow:0 1px 3px rgba(0,0,0,.12),0 8px 24px rgba(0,0,0,.06);max-width:100%;background:#eee}
-.pv img{width:100%;display:block}
+.pv{position:relative;line-height:0;overflow:hidden;cursor:grab;touch-action:none;user-select:none;box-shadow:0 1px 3px rgba(0,0,0,.12),0 8px 24px rgba(0,0,0,.06);max-width:100%;background:#eee}
+.pv img{width:100%;display:block;-webkit-user-drag:none;pointer-events:none}
+.pv.dragging{cursor:grabbing}
+.stage .hintc{color:var(--faint);font-size:12px}
 .pv .g{position:absolute;left:0;right:0;border-top:1px dashed var(--guide);pointer-events:none}
 .pv .gl{position:absolute;right:4px;font:10px/1 ui-monospace,monospace;color:var(--guide);background:rgba(255,255,255,.85);padding:2px 4px;border-radius:3px;transform:translateY(-110%)}
 .pv .gv{position:absolute;top:0;bottom:0;border-left:1px dashed var(--vguide);pointer-events:none}
@@ -175,7 +177,7 @@ input[type=range]{width:100%;accent-color:var(--sel);margin:0}
 <script src="vendor/ort.min.js"></script>
 <script src="vendor/pica.min.js"></script>
 <script src="vendor/jszip.min.js"></script>
-<script src="engine.js"></script>
+<script src="engine.js?v=5"></script>
 <script>
 const SLOT_ORDER=['person','profile','text01','text02'];
 const SLOT_NAME={person:'人物',profile:'profile',text01:'text1',text02:'text2'};
@@ -321,12 +323,12 @@ function renderMain(){
     ${cur.notes.map(e=>`<div class="msg warn" style="margin:0 0 10px">${esc(e)}</div>`).join('')}
     <div class="slots">${SLOT_ORDER.map(slotHTML).join('')}</div>
     <div class="stage">
-      <div class="bar"><b id="stTitle"></b><span class="dim" id="stDim"></span><span class="sp"></span>
+      <div class="bar"><b id="stTitle"></b><span class="dim" id="stDim"></span><span class="sp"></span><span class="hintc">ドラッグで移動 · スクロールで拡大縮小</span>
         <label class="toggle"><input type="checkbox" ${showGuide?'checked':''} onchange="showGuide=this.checked;$('#pv').classList.toggle('noguide',!showGuide)"><span></span>ガイド線</label></div>
       <div class="canvas"><div class="pv ${showGuide?'':'noguide'}" id="pv"><img id="pvimg"><div class="g" id="g"></div><div class="gl" id="gl"></div><span id="vg"></span></div></div>
     </div>
     <div class="strip">${ORDER.map(outHTML).join('')}</div>`;
-  SLOT_ORDER.forEach(drawSlot);
+  SLOT_ORDER.forEach(drawSlot);bindDrag();
   ORDER.forEach(n=>{const c=cur.crops[n];if(srcFor(cur,n)){if(c&&c.url)paintOut(n,c);else refresh(n,true)}});
   showStage();
 }
@@ -372,12 +374,61 @@ function showStage(){
   $('#vg').innerHTML=(VGUIDES[n]||[]).map(x=>`<div class="gv" style="left:${x/p.w*100}%"></div><div class="gvl" style="left:${x/p.w*100}%">${x}</div>`).join('');
   const c=cur.crops[n],img=$('#pvimg');
   if(!srcFor(cur,n)){img.removeAttribute('src');}
-  else if(c&&c.url&&img.getAttribute('src')!==c.url)img.src=c.url;
+  else if(c&&c.url&&img.getAttribute('src')!==c.url){img.onload=()=>{if(!dragSt)img.style.transform=''};img.src=c.url}
   const show=c&&c.head_top_out!=null;$('#g').style.display=$('#gl').style.display=show?'':'none';
   if(show){const t=c.head_top_out/p.h*100;$('#g').style.top=$('#gl').style.top=t+'%';$('#gl').textContent='頭頂 '+Math.round(c.head_top_out)+'px'}
 }
 
-/* ---------- 右侧设置 ---------- */
+/* ---------- プレビューを直接ドラッグ / ホイールで調整 ---------- */
+let dragSt=null;
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+function bindDrag(){
+  const pv=$('#pv');if(!pv)return;
+  pv.onpointerdown=e=>{
+    const n=cur.sel,c=cur.crops[n];if(!srcFor(cur,n)||!c||!c.box)return;
+    const r=pv.getBoundingClientRect();
+    dragSt={x:e.clientX,y:e.clientY,ratio:PRE[n].w/r.width,base:{...cur.settings[n]},c,n,moved:false};
+    pv.setPointerCapture(e.pointerId);pv.classList.add('dragging');
+  };
+  pv.onpointermove=e=>{
+    if(!dragSt)return;const dx=e.clientX-dragSt.x,dy=e.clientY-dragSt.y;
+    if(Math.abs(dx)+Math.abs(dy)>2)dragSt.moved=true;
+    $('#pvimg').style.transform=`translate(${dx}px,${dy}px)`;
+  };
+  pv.onpointerup=pv.onpointercancel=e=>{
+    if(!dragSt)return;const d=dragSt;dragSt=null;pv.classList.remove('dragging');
+    if(!d.moved){$('#pvimg').style.transform='';return}
+    applyDrag(d,(e.clientX-d.x)*d.ratio,(e.clientY-d.y)*d.ratio);
+  };
+  pv.onwheel=e=>{
+    const n=cur.sel;if(!srcFor(cur,n))return;e.preventDefault();
+    const s=cur.settings[n],p=PRE[n];
+    const lo=p.mode==='person'?0.5:1,hi=p.mode==='person'?2.5:3;
+    s.size=clamp(Math.round(s.size*Math.exp(-Math.sign(e.deltaY)*Math.min(Math.abs(e.deltaY),100)*0.0006)*100)/100,lo,hi);
+    renderInsp();refresh(n);
+  };
+}
+function applyDrag(d,dx,dy){
+  const n=d.n,p=PRE[n],s=cur.settings[n],b=d.base,c=d.c,im=srcFor(cur,n);
+  if(p.mode==='plain'){
+    const cw=c.box[2]-c.box[0],ch=c.box[3]-c.box[1];
+    const sx=(im.w-cw)*c.k,sy=(im.h-ch)*c.k;
+    if(sx>0.5)s.px=clamp(b.px-dx/sx,0,1);
+    if(sy>0.5)s.py=clamp(b.py-dy/sy,0,1);
+  }else{
+    s.dpos=clamp(b.dpos+dx/p.w,-0.5,0.5);
+    s.dy=clamp(Math.round(b.dy+dy),-200,200);
+    try{ // 元画像の端で止まった分は戻す（次のドラッグがすぐ効くように）
+      const c2=Engine.crop(im.id,n,params(s));
+      const ndp=Math.round(c2.dpos_eff*1000)/1000,ndy=Math.round(c2.dy_eff);
+      if(Math.abs(ndp-s.dpos)>0.002||Math.abs(ndy-s.dy)>1)toast('元画像の端に達しています。人物サイズを大きくするとさらに動かせます',3000);
+      s.dpos=ndp;s.dy=ndy;
+    }catch(e){}
+  }
+  renderInsp();refresh(n,true);
+}
+
+/* ---------- 右側設定 ---------- */
 function renderInsp(){
   const el=$('#insp');if(!cur){el.innerHTML='';return}
   const n=cur.sel,p=PRE[n],s=cur.settings[n],im=srcFor(cur,n),c=cur.crops[n];
@@ -385,12 +436,12 @@ function renderInsp(){
   if(!im){el.innerHTML=`<div class="sec"><div class="ttl">${n}.jpg</div><div class="msg info" style="margin-top:10px">${SLOT_NAME[p.slot]}の元画像がないため、書き出し時はスキップします。上の該当する枠から追加してください。</div></div>`;return}
   let f='';
   if(p.mode==='plain'){
-    f=rng('size','画面サイズ',100,200,1,s.size*100,'%')+rng('px','左右位置',0,100,1,s.px*100,'%')+rng('py','上下位置',0,100,1,s.py*100,'%');
+    f=rng('size','画面サイズ',100,300,1,s.size*100,'%')+rng('px','左右位置',0,100,1,s.px*100,'%')+rng('py','上下位置',0,100,1,s.py*100,'%');
   }else{
     if(p.positions)f+=segHTML('人物の位置','pos',{left:'左',center:'中央',right:'右'},s.posKey||'right');
     if(p.mode==='profile')f+=segHTML('頭部ガイド線','side',{auto:'自動',left:'左線 157',right:'右線 593'},s.side);
-    f+=rng('size',p.mode==='profile'?'画面サイズ':'人物サイズ',p.mode==='profile'?100:60,160,1,s.size*100,'%')
-      +rng('dpos','左右の微調整',-20,20,0.5,s.dpos*100,'%')+rng('dy','頭頂の微調整',-40,40,1,s.dy,'px');
+    f+=rng('size',p.mode==='profile'?'画面サイズ':'人物サイズ',p.mode==='profile'?100:50,250,1,s.size*100,'%')
+      +rng('dpos','左右の微調整',-50,50,0.5,s.dpos*100,'%')+rng('dy','頭頂の微調整',-200,200,1,s.dy,'px');
   }
   el.innerHTML=`
     <div class="sec"><div class="ttl">${n}.jpg</div>
@@ -401,11 +452,13 @@ function renderInsp(){
 }
 const DEF={size:100,px:50,py:50,dpos:0,dy:0};
 function rng(k,label,min,max,step,val,unit){
-  const fmt=v=>(unit==='%'?(+v).toFixed(step<1?1:0):v)+unit;
+  const dig=step<1?1:0;
+  const fmt=v=>unit==='%'?(+v).toFixed(dig)+'%':v+unit;
+  const expr=unit==='%'?`(+this.value).toFixed(${dig})+'%'`:`this.value+'${unit}'`;
   return `<div class="field"><div class="fl">${label}<b>${fmt(val)}</b></div>
     <input type="range" min="${min}" max="${max}" step="${step}" value="${val}"
       ondblclick="this.value=${DEF[k]};this.dispatchEvent(new Event('input'))"
-      oninput="this.parentNode.querySelector('b').textContent=(${fmt.toString()})(this.value);setV('${k}',this.value/${k==='dy'?1:100})"></div>`;
+      oninput="this.parentNode.querySelector('b').textContent=${expr};setV('${k}',this.value/${k==='dy'?1:100})"></div>`;
 }
 function segHTML(label,k,opts,on){
   return `<div class="field"><div class="fl">${label}</div><div class="seg">${Object.entries(opts).map(([v,t])=>`<button class="${on===v?'on':''}" onclick="setSeg('${k}','${v}',this)">${t}</button>`).join('')}</div></div>`;
